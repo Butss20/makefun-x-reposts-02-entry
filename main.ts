@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 const BOT_DIR = process.env.MAKEFUN_BOT_DIR ?? ".";
 const OUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
-const POST_URL_RE = /^https:\/\/x\.com\/ceokopdesc\/status\/\d+$/;
+const POST_URL_RE = /^https:\/\/(x\.com|twitter\.com)\/ceokopdesc\/status\/\d+$/;
 const MAX_POSTS = 15;
 
 function fail(message: string): never {
@@ -21,15 +21,21 @@ try {
   fail(`cannot read ${inputPath}`);
 }
 
-let posts: unknown;
+let doc: unknown;
 try {
-  posts = JSON.parse(raw);
+  doc = JSON.parse(raw);
 } catch {
   fail(`${inputPath} is not valid JSON`);
 }
 
+// The house reads POSTS.json as a JSON object {"posts": [...]}, not a bare
+// array: a list that is not that shape is invalid and scores 0.
+if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
+  fail('POSTS.json must be a JSON object {"posts": [...]}');
+}
+const posts: unknown = (doc as { posts?: unknown }).posts;
 if (!Array.isArray(posts)) {
-  fail("POSTS.json must contain a JSON array of X post URLs");
+  fail('POSTS.json must contain a "posts" array of X post URLs');
 }
 if (posts.length > MAX_POSTS) {
   fail(`POSTS.json lists ${posts.length} posts, more than the ${MAX_POSTS} allowed`);
@@ -53,7 +59,7 @@ for (const url of posts as string[]) {
 
 mkdirSync(OUT_DIR, { recursive: true });
 const outPath = join(OUT_DIR, "POSTS.json");
-const written = JSON.stringify(posts, null, 2) + "\n";
+const written = JSON.stringify({ posts }, null, 2) + "\n";
 writeFileSync(outPath, written, "utf8");
 // Read the output back and confirm it round-trips exactly what was validated.
 if (readFileSync(outPath, "utf8") !== written) {
